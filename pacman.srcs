@@ -1,0 +1,4 @@
+src/pas/pacman/routing/ThriftyBoardRouter.java
+src/pas/pacman/routing/ThriftyPelletRouter.java
+src/pas/pacman/agents/PacmanAgent.java
+

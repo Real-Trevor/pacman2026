@@ -1,0 +1,9 @@
+edu.bu.pas.pacman
+edu.bu.pas.pacman.agents
+edu.bu.pas.pacman.game
+edu.bu.pas.pacman.game.entity
+edu.bu.pas.pacman.generator
+edu.bu.pas.pacman.graph
+edu.bu.pas.pacman.rendering
+edu.bu.pas.pacman.routing
+edu.bu.pas.pacman.utils

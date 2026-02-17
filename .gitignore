@@ -1,0 +1,9 @@
+# ignore local mac finder file
+.DS_Store
+
+# ignore compiled class files created by javac (specific to this project layout)
+src/pas/pacman/agents/PacmanAgent.class
+src/pas/pacman/routing/ThriftyBoardRouter.class
+src/pas/pacman/routing/ThriftyBoardRouter$BoardExtraParams.class
+src/pas/pacman/routing/ThriftyPelletRouter.class
+src/pas/pacman/routing/ThriftyPelletRouter$PelletExtraParams.class

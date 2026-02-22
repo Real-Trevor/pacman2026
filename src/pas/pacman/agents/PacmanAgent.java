@@ -15,6 +15,7 @@ import edu.bu.pas.pacman.utils.Pair;
 
 import java.util.Random;
 import java.util.Set;
+import java.util.Stack;
 
 
 // JAVA PROJECT IMPORTS
@@ -54,6 +55,57 @@ public class PacmanAgent
         // this.getBoardRouter().graphSearch(...) to get a path and convert it into
         // a Stack of Coordinates (see the documentation for SearchAgent)
         // which your makeMove can do something with!
+        // Get Pacman's current coordinate
+    Coordinate src =
+        game.getEntity(game.getPacmanId()).getCurrentCoordinate();
+
+    // Find a pellet by scanning the board
+    Coordinate target = null;
+
+    for (int x = 0; x < game.getXBoardDimension(); x++) {
+        for (int y = 0; y < game.getYBoardDimension(); y++) {
+
+            Coordinate c = new Coordinate(x, y);
+
+            if (!game.isInBounds(c)) {
+                continue;
+            }
+
+            if (game.getTile(c).getState()
+                    == edu.bu.pas.pacman.game.Tile.State.PELLET) {
+
+                target = c;
+                break;
+            }
+        }
+        if (target != null) {
+            break;
+        }
+    }
+
+    if (target == null) {
+        this.setPlanToGetToTarget(new Stack<>());
+        return;
+    }
+
+    this.setTargetCoordinate(target);
+
+    Path<Coordinate> path =
+        this.getBoardRouter().graphSearch(src, target, game);
+
+    Stack<Coordinate> plan = new Stack<>();
+
+    while (path != null) {
+        plan.push(path.getDestination());
+        path = path.getParentPath();
+    }
+
+    // Remove current position (top will be src)
+    if (!plan.isEmpty()) {
+        plan.pop();
+    }
+
+    this.setPlanToGetToTarget(plan);
     }
 
     @Override
@@ -61,7 +113,32 @@ public class PacmanAgent
     {
         // This is currently configured to choose a random action
         // TODO: change me!
-        return Action.values()[this.getRandom().nextInt(Action.values().length)];
+        {
+    Stack<Coordinate> plan =
+        this.getPlanToGetToTarget();
+
+    if (plan == null || plan.isEmpty()) {
+        this.makePlan(game);
+        plan = this.getPlanToGetToTarget();
+    }
+
+    if (plan == null || plan.isEmpty()) {
+        return Action.UP;
+    }
+
+    Coordinate current =
+        game.getEntity(game.getPacmanId())
+            .getCurrentCoordinate();
+
+    Coordinate next = plan.pop();
+
+    try {
+        return Action.inferFromCoordinates(current, next);
+    } catch (Exception e) {
+        return Action.UP;
+        }
+   }
+        //return Action.values()[this.getRandom().nextInt(Action.values().length)];
     }
 
     @Override

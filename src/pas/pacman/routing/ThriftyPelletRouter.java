@@ -1,13 +1,15 @@
 package src.pas.pacman.routing;
 
 
+import java.util.ArrayList;
 // SYSTEM IMPORTS
 import java.util.Collection;
-
+import java.util.List;
 
 // JAVA PROJECT IMPORTS
 import edu.bu.pas.pacman.game.Action;
 import edu.bu.pas.pacman.game.Game.GameView;
+import edu.bu.pas.pacman.game.Tile;
 import edu.bu.pas.pacman.graph.Path;
 import edu.bu.pas.pacman.graph.PelletGraph.PelletVertex;
 import edu.bu.pas.pacman.routing.PelletRouter;
@@ -45,8 +47,14 @@ public class ThriftyPelletRouter
                                                          final GameView game,
                                                          final ExtraParams params)
     {
-        // TODO: implement me!
-        return null;
+        List<PelletVertex> neighbors = new ArrayList<>();
+
+        for (Coordinate pelletCoordinate : src.getRemainingPelletCoordinates())
+            {
+                PelletVertex neighbor = src.removePellet(pelletCoordinate);
+                neighbors.add(neighbor);
+            }
+        return neighbors;
     }
 
     @Override

@@ -5,6 +5,9 @@ import java.util.ArrayList;
 // SYSTEM IMPORTS
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.HashMap;
 
 // JAVA PROJECT IMPORTS
 import edu.bu.pas.pacman.game.Action;
@@ -71,7 +74,23 @@ public class ThriftyPelletRouter
                               final GameView game,
                               final ExtraParams params)
     {
-        // TODO: implement me!
+        Set<Coordinate> pellets = src.getRemainingPelletCoordinates();
+        Coordinate pacman = src.getPacmanCoordinate();
+
+        Set<Coordinate> allNodes = new HashSet<>(pellets);
+        allNodes.add(pacman);
+
+        HashMap<Coordinate, Coordinate> tree = new HashMap<>();
+
+        for (Coordinate coord1 : allNodes) {
+            for (Coordinate coord2 : allNodes) {
+                if (!coord1.equals(coord2)) {
+                    tree.put(coord1, coord2);
+                }
+            }
+        }
+        
+
         return 0f;
     }
 

@@ -7,12 +7,15 @@ import edu.bu.pas.pacman.agents.SearchAgent;
 import edu.bu.pas.pacman.game.Action;
 import edu.bu.pas.pacman.game.Game.GameView;
 import edu.bu.pas.pacman.graph.Path;
+import edu.bu.pas.pacman.graph.PelletGraph;
 import edu.bu.pas.pacman.graph.PelletGraph.PelletVertex;
 import edu.bu.pas.pacman.routing.BoardRouter;
 import edu.bu.pas.pacman.routing.PelletRouter;
 import edu.bu.pas.pacman.utils.Coordinate;
 import edu.bu.pas.pacman.utils.Pair;
+import java.util.Collections;
 
+import java.util.ArrayList;
 import java.util.Random;
 import java.util.Set;
 import java.util.Stack;
@@ -56,6 +59,40 @@ public class PacmanAgent
         // a Stack of Coordinates (see the documentation for SearchAgent)
         // which your makeMove can do something with!
         // Get Pacman's current coordinate
+    
+        Path<PelletVertex> pelletPath = this.getPelletRouter().graphSearch(game);
+        ArrayList<Coordinate> pelletOrder = new ArrayList<>();
+        Path<PelletVertex> temp = pelletPath;
+        while (temp != null) {
+            pelletOrder.add(temp.getDestination().getPacmanCoordinate());
+            temp = temp.getParentPath();
+        }
+        Collections.reverse(pelletOrder);
+
+        Coordinate src = game.getEntity(game.getPacmanId()).getCurrentCoordinate();
+
+        Stack<Coordinate> plan = new Stack<>();
+
+        for (int x = 0; x < pelletOrder.size() - 1; x++) {
+            Coordinate target = pelletOrder.get(x);
+            Path<Coordinate> path = this.getBoardRouter().graphSearch(src, target, game);
+            Stack<Coordinate> subPlan = new Stack<>();
+            
+            while (path != null) {
+                subPlan.push(path.getDestination());
+                path = path.getParentPath();
+            }
+            subPlan.pop();
+
+            while (subPlan.size() > 0) {
+                plan.push(subPlan.pop());
+            }
+
+            src = target;
+        }
+    
+        this.setPlanToGetToTarget(plan);
+    /* OLD IMPLEMENTATION:
     Coordinate src =
         game.getEntity(game.getPacmanId()).getCurrentCoordinate();
 
@@ -106,6 +143,7 @@ public class PacmanAgent
     }
 
     this.setPlanToGetToTarget(plan);
+    */
     }
 
     @Override

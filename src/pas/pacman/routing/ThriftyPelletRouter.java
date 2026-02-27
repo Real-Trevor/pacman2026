@@ -87,7 +87,7 @@ public class ThriftyPelletRouter
 
         Set<Coordinate> visited = new HashSet<>();
         
-        PriorityQueue<Pair<Float, Coordinate>> pQueue = new PriorityQueue<>();
+        PriorityQueue<Pair<Float, Coordinate>> pQueue = new PriorityQueue<>((a, b) -> Float.compare(a.getFirst(), b.getFirst()));
 
         visited.add(pacman);
         for (Coordinate node:allNodes) {

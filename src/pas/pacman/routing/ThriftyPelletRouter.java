@@ -67,8 +67,8 @@ public class ThriftyPelletRouter
                                final PelletVertex dst,
                                final ExtraParams params)
     {
-        // TODO: implement me!
-        return 1f;
+        float weight = Math.abs(src.getPacmanCoordinate().x() - dst.getPacmanCoordinate().x()) + Math.abs(src.getPacmanCoordinate().y() - dst.getPacmanCoordinate().y());
+        return weight;
     }
 
     @Override

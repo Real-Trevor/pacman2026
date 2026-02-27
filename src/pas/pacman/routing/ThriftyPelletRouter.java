@@ -1,167 +1,243 @@
+
 package src.pas.pacman.routing;
 
-
-import java.net.CookiePolicy;
-import java.nio.file.OpenOption;
-import java.util.ArrayList;
 // SYSTEM IMPORTS
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
-import java.util.Set;
-import java.util.HashSet;
-import java.util.PriorityQueue;
+import java.util.Comparator;
 import java.util.HashMap;
-
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
 
 // JAVA PROJECT IMPORTS
-import edu.bu.pas.pacman.game.Action;
 import edu.bu.pas.pacman.game.Game.GameView;
-import edu.bu.pas.pacman.game.Tile;
 import edu.bu.pas.pacman.graph.Path;
-import edu.bu.pas.pacman.graph.PelletGraph;
 import edu.bu.pas.pacman.graph.PelletGraph.PelletVertex;
+import edu.bu.pas.pacman.routing.BoardRouter;
 import edu.bu.pas.pacman.routing.PelletRouter;
-import edu.bu.pas.pacman.routing.PelletRouter.ExtraParams;
 import edu.bu.pas.pacman.utils.Coordinate;
 import edu.bu.pas.pacman.utils.Pair;
 
+public class ThriftyPelletRouter extends PelletRouter {
+  
+  // Custom Params to hold cache, but we handle null cases defensively
+  public static class PelletExtraParams extends ExtraParams {
+    public GameView game;
+    public Map<Pair<Coordinate, Coordinate>, Float> distanceCache;
+    
+    public PelletExtraParams(GameView game) {
+      this.game = game;
+      this.distanceCache = new HashMap<>();
+    }
+  }
 
-public class ThriftyPelletRouter
-    extends PelletRouter
-{
+  private BoardRouter boardRouter;
 
-    // If you want to encode other information you think is useful for planning the order
-    // of pellets ot eat besides Coordinates and data available in GameView
-    // you can do so here.
-    public static class PelletExtraParams
-        extends ExtraParams
-    {
+  public ThriftyPelletRouter(int myUnitId, int pacmanId, int ghostChaseRadius) {
+    super(myUnitId, pacmanId, ghostChaseRadius);
+    this.boardRouter = new src.pas.pacman.routing.ThriftyBoardRouter(myUnitId, pacmanId, ghostChaseRadius);
+  }
 
+  @Override
+  public Collection<PelletVertex> getOutgoingNeighbors(
+      final PelletVertex src, final GameView game, final ExtraParams params) {
+    Set<Coordinate> pellets = src.getRemainingPelletCoordinates();
+    List<PelletVertex> neighbors = new ArrayList<>(pellets.size());
+    for (Coordinate pellet : pellets) {
+      neighbors.add(src.removePellet(pellet));
+    }
+    return neighbors;
+  }
+
+  @Override
+  public float getEdgeWeight(
+      final PelletVertex src, final PelletVertex dst, final ExtraParams params) {
+    
+    // 1. Identify Target Pellet
+    Set<Coordinate> srcPellets = src.getRemainingPelletCoordinates();
+    Set<Coordinate> dstPellets = dst.getRemainingPelletCoordinates();
+
+    Coordinate targetPellet = null;
+    for (Coordinate p : srcPellets) {
+      if (!dstPellets.contains(p)) {
+        targetPellet = p;
+        break;
+      }
+    }
+    if (targetPellet == null) return 1f;
+
+    Coordinate pacmanPos = src.getPacmanCoordinate();
+
+    // 2. Check Cache if available
+    Map<Pair<Coordinate, Coordinate>, Float> cache = null;
+    GameView game = null;
+    
+    if (params instanceof PelletExtraParams) {
+        PelletExtraParams pp = (PelletExtraParams) params;
+        cache = pp.distanceCache;
+        game = pp.game;
     }
 
-    // feel free to add other fields here!
-
-    public ThriftyPelletRouter(int myUnitId,
-                               int pacmanId,
-                               int ghostChaseRadius)
-    {
-        super(myUnitId, pacmanId, ghostChaseRadius);
-
-        // if you add fields don't forget to initialize them here!
-    }
-
-    @Override
-    public Collection<PelletVertex> getOutgoingNeighbors(final PelletVertex src,
-                                                         final GameView game,
-                                                         final ExtraParams params)
-    {
-        List<PelletVertex> neighbors = new ArrayList<>();
-
-        for (Coordinate pelletCoordinate : src.getRemainingPelletCoordinates())
-            {
-                PelletVertex neighbor = src.removePellet(pelletCoordinate);
-                neighbors.add(neighbor);
-            }
-        return neighbors;
-    }
-
-    @Override
-    public float getEdgeWeight(final PelletVertex src,
-                               final PelletVertex dst,
-                               final ExtraParams params)
-    {
-        float weight = Math.abs(src.getPacmanCoordinate().x() - dst.getPacmanCoordinate().x()) + Math.abs(src.getPacmanCoordinate().y() - dst.getPacmanCoordinate().y());
-        return weight;
-    }
-
-    @Override
-    public float getHeuristic(final PelletVertex src,
-                              final GameView game,
-                              final ExtraParams params)
-    {
-        Set<Coordinate> pellets = src.getRemainingPelletCoordinates();
-        Coordinate pacman = src.getPacmanCoordinate();
-
-        Set<Coordinate> allNodes = new HashSet<>(pellets);
-        //pacman node is not in allNodes^^^
-
-        Set<Coordinate> visited = new HashSet<>();
+    if (cache != null) {
+        Pair<Coordinate, Coordinate> key = new Pair<>(pacmanPos, targetPellet);
+        if (cache.containsKey(key)) {
+            return cache.get(key);
+        }
         
-        PriorityQueue<Pair<Float, Coordinate>> pQueue = new PriorityQueue<>((a, b) -> Float.compare(a.getFirst(), b.getFirst()));
-
-        visited.add(pacman);
-        for (Coordinate node:allNodes) {
-            float weight = Math.abs(pacman.x() - node.x()) + Math.abs(pacman.y() - node.y());
-            pQueue.add(new Pair<>(weight, node));
+        // Compute and Cache
+        if (game != null) {
+            Path<Coordinate> path = this.boardRouter.graphSearch(pacmanPos, targetPellet, game);
+            float cost = (path != null) ? path.getTrueCost() : manhattanDistance(pacmanPos, targetPellet);
+            cache.put(key, cost);
+            return cost;
         }
+    }
+    
+    // Fallback if no cache/game provided
+    return manhattanDistance(pacmanPos, targetPellet);
+  }
 
-        float totalWeight = 0;
-        allNodes.add(pacman);
+  private float manhattanDistance(Coordinate c1, Coordinate c2) {
+    return Math.abs(c1.x() - c2.x()) + Math.abs(c1.y() - c2.y());
+  }
 
-        //begin prim's greedy apporach to get minimum manhattan distances from pacman
-        while (!pQueue.isEmpty() && visited.size() < allNodes.size()) {
-            Pair<Float, Coordinate> current = pQueue.poll();
+  /**
+   * Optimized MST Heuristic using Prim's Algorithm with Arrays.
+   * O(N^2) complexity where N is number of pellets.
+   * Much faster than PQ based approach for dense graphs.
+   */
+  private float computeFastMSTHeuristic(final PelletVertex src) {
+    Set<Coordinate> pellets = src.getRemainingPelletCoordinates();
+    int n = pellets.size();
+    
+    if (n == 0) return 0f;
 
-            if (visited.contains(current.getSecond())) {
-                continue;
+    Coordinate pacman = src.getPacmanCoordinate();
+    
+    // 1. Distance to nearest pellet
+    float minToPellet = Float.MAX_VALUE;
+    Coordinate startNode = null;
+    
+    // Use an ArrayList for indexed access during MST
+    List<Coordinate> nodes = new ArrayList<>(n);
+    
+    for (Coordinate p : pellets) {
+        nodes.add(p);
+        float d = manhattanDistance(pacman, p);
+        if (d < minToPellet) {
+            minToPellet = d;
+            startNode = p;
+        }
+    }
+    
+    if (n == 1) return minToPellet;
+
+    // 2. MST of the pellets
+    // Array-based Prim's algorithm
+    float[] minEdge = new float[n];
+    boolean[] visited = new boolean[n];
+    
+    // Init minEdge
+    for(int i=0; i<n; i++) minEdge[i] = Float.MAX_VALUE;
+    
+    // Start MST from the pellet closest to Pacman
+    int startIdx = nodes.indexOf(startNode);
+    minEdge[startIdx] = 0f;
+    
+    float mstWeight = 0f;
+    
+    for (int i = 0; i < n; i++) {
+        int u = -1;
+        float minVal = Float.MAX_VALUE;
+        
+        // Find min unvisited
+        for (int v = 0; v < n; v++) {
+            if (!visited[v] && minEdge[v] < minVal) {
+                minVal = minEdge[v];
+                u = v;
             }
-
-            visited.add(current.getSecond());
-            totalWeight += current.getFirst();
-
-            for (Coordinate coord:allNodes) {
-                if (!visited.contains(coord)) {
-                    float distance = Math.abs(current.getSecond().x() - coord.x()) + Math.abs(current.getSecond().y() - coord.y());
-                    pQueue.add(new Pair<>(distance, coord));
+        }
+        
+        if (u == -1) break;
+        
+        visited[u] = true;
+        mstWeight += minVal;
+        
+        Coordinate uCoord = nodes.get(u);
+        
+        // Update neighbors
+        for (int v = 0; v < n; v++) {
+            if (!visited[v]) {
+                float dist = manhattanDistance(uCoord, nodes.get(v));
+                if (dist < minEdge[v]) {
+                    minEdge[v] = dist;
                 }
             }
         }
-        return totalWeight;
     }
 
-    @Override
-    public Path<PelletVertex> graphSearch(final GameView game) 
-    {
-        PelletVertex st = new PelletVertex(game);
-        //smallest to greatest
-        PriorityQueue<Pair<Float, Path<PelletVertex>>> openSet = new PriorityQueue<>((a, b) -> Float.compare(a.getFirst(), b.getFirst()));
-        HashMap<PelletVertex, Float> gScore = new HashMap<>();
-        float g = 0;
-        float h = getHeuristic(st, game, null);
-        float f = g + h;
-        Path<PelletVertex> startPath = new Path<PelletGraph.PelletVertex>(st);
-        openSet.add(new Pair<Float, Path<PelletVertex>>(f, startPath));
-        gScore.put(st,0f);
+    return minToPellet + mstWeight;
+  }
 
-        while (!openSet.isEmpty()) {
-            Pair<Float, Path<PelletVertex>> currentPair = openSet.poll();
-            PelletGraph.PelletVertex current = currentPair.getSecond().getDestination();
+  @Override
+  public float getHeuristic(final PelletVertex src, final GameView game, final ExtraParams params) {
+    // We ignore params cache for the heuristic to keep it strictly admissible via Manhattan
+    // This also avoids the NPE issues in unit tests.
+    return computeFastMSTHeuristic(src);
+  }
 
-            if (current.getRemainingPelletCoordinates().size() == 0) {
-                return currentPair.getSecond(); 
-            }
+  @Override
+  public Path<PelletVertex> graphSearch(final GameView game) {
+    PelletVertex start = new PelletVertex(game);
+    PelletExtraParams params = new PelletExtraParams(game);
 
-            for (PelletVertex neighbor : getOutgoingNeighbors(current, game, null)) {
-                float newG = gScore.get(current) + getEdgeWeight(current, neighbor, null);
+    // Order by F = G + H
+    // Path object stores G internally. H is stored in estimatedPathCostToGoal.
+    PriorityQueue<Path<PelletVertex>> openSet =
+        new PriorityQueue<>(
+            Comparator.comparingDouble(p -> p.getTrueCost() + p.getEstimatedPathCostToGoal()));
 
-                float value;
-                if (gScore.get(neighbor) == null) {
-                    value = Float.MAX_VALUE;
-                } else {
-                    value = gScore.get(neighbor);
-                }
+    Set<PelletVertex> visited = new HashSet<>();
+    
+    float startH = getHeuristic(start, game, params);
+    
+    // Create root path. 
+    // Note: Path(dst, edgeCost, heuristic, parent) is standard.
+    // For root, we can use 1-arg constructor and set H.
+    Path<PelletVertex> root = new Path<>(start);
+    root.setEstimatedPathCostToGoal(startH);
+    
+    openSet.add(root);
 
-                if (newG < value) {
-                    gScore.put(neighbor, newG);
-                    float newH = getHeuristic(neighbor, game, null);
-                    float newF = newG + newH;
-                    Path<PelletVertex> newPath = new Path<PelletVertex>(neighbor, getEdgeWeight(current, neighbor, null), currentPair.getSecond());
-                    openSet.add(new Pair<Float, Path<PelletVertex>>(newF, newPath));
-                }
-            }
+    while (!openSet.isEmpty()) {
+      Path<PelletVertex> currentPath = openSet.poll();
+      PelletVertex currentVertex = currentPath.getDestination();
+
+      if (currentVertex.getRemainingPelletCoordinates().isEmpty()) {
+        return currentPath;
+      }
+
+      if (visited.contains(currentVertex)) {
+        continue;
+      }
+      visited.add(currentVertex);
+
+      for (PelletVertex neighbor : getOutgoingNeighbors(currentVertex, game, params)) {
+        if (!visited.contains(neighbor)) {
+          float edgeCost = getEdgeWeight(currentVertex, neighbor, params);
+          float heuristic = getHeuristic(neighbor, game, params);
+          
+          // Create new path node
+          Path<PelletVertex> newPath = new Path<>(neighbor, edgeCost, heuristic, currentPath);
+          openSet.add(newPath);
         }
-        return null;
+      }
     }
 
+    return null;
+  }
 }
 

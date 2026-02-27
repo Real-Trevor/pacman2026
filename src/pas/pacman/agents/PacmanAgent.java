@@ -1,46 +1,33 @@
 package src.pas.pacman.agents;
 
-
 // SYSTEM IMPORTS
-import edu.bu.pas.pacman.agents.Agent;
 import edu.bu.pas.pacman.agents.SearchAgent;
 import edu.bu.pas.pacman.game.Action;
 import edu.bu.pas.pacman.game.Game.GameView;
 import edu.bu.pas.pacman.graph.Path;
-import edu.bu.pas.pacman.graph.PelletGraph;
 import edu.bu.pas.pacman.graph.PelletGraph.PelletVertex;
 import edu.bu.pas.pacman.routing.BoardRouter;
 import edu.bu.pas.pacman.routing.PelletRouter;
 import edu.bu.pas.pacman.utils.Coordinate;
-import edu.bu.pas.pacman.utils.Pair;
-import java.util.Collections;
-
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
-import java.util.Set;
 import java.util.Stack;
 
-
 // JAVA PROJECT IMPORTS
-import src.pas.pacman.routing.ThriftyBoardRouter;  // responsible for how to get somewhere
-import src.pas.pacman.routing.ThriftyPelletRouter; // responsible for pellet order
+import src.pas.pacman.routing.ThriftyBoardRouter;
+import src.pas.pacman.routing.ThriftyPelletRouter;
 
-
-public class PacmanAgent
-    extends SearchAgent
-{
+public class PacmanAgent extends SearchAgent {
 
     private final Random random;
-    private BoardRouter  boardRouter;
+    private BoardRouter boardRouter;
     private PelletRouter pelletRouter;
 
-    public PacmanAgent(int myUnitId,
-                       int pacmanId,
-                       int ghostChaseRadius)
-    {
+    public PacmanAgent(int myUnitId, int pacmanId, int ghostChaseRadius) {
         super(myUnitId, pacmanId, ghostChaseRadius);
         this.random = new Random();
-
         this.boardRouter = new ThriftyBoardRouter(myUnitId, pacmanId, ghostChaseRadius);
         this.pelletRouter = new ThriftyPelletRouter(myUnitId, pacmanId, ghostChaseRadius);
     }
@@ -50,138 +37,114 @@ public class PacmanAgent
     public final PelletRouter getPelletRouter() { return this.pelletRouter; }
 
     @Override
-    public void makePlan(final GameView game)
-    {
-        // TODO: implement me! This method is responsible for calculating
-        // the "plan" of Coordinates you should visit in order to get from a starting
-        // location and another ending location. I recommend you use
-        // this.getBoardRouter().graphSearch(...) to get a path and convert it into
-        // a Stack of Coordinates (see the documentation for SearchAgent)
-        // which your makeMove can do something with!
-        // Get Pacman's current coordinate
-    
-        Path<PelletVertex> pelletPath = this.getPelletRouter().graphSearch(game);
-        ArrayList<Coordinate> pelletOrder = new ArrayList<>();
-        Path<PelletVertex> temp = pelletPath;
-        while (temp != null) {
-            pelletOrder.add(temp.getDestination().getPacmanCoordinate());
-            temp = temp.getParentPath();
-        }
-        Collections.reverse(pelletOrder);
-
+    public void makePlan(final GameView game) {
         Coordinate src = game.getEntity(game.getPacmanId()).getCurrentCoordinate();
+        Coordinate target = this.getTargetCoordinate();
 
-        Stack<Coordinate> plan = new Stack<>();
-
-        for (int x = 0; x < pelletOrder.size() - 1; x++) {
-            Coordinate target = pelletOrder.get(x);
-            Path<Coordinate> path = this.getBoardRouter().graphSearch(src, target, game);
-            Stack<Coordinate> subPlan = new Stack<>();
-            
-            while (path != null) {
-                subPlan.push(path.getDestination());
-                path = path.getParentPath();
-            }
-            subPlan.pop();
-
-            while (subPlan.size() > 0) {
-                plan.push(subPlan.pop());
-            }
-
-            src = target;
-        }
-    
-        this.setPlanToGetToTarget(plan);
-    /* OLD IMPLEMENTATION:
-    Coordinate src =
-        game.getEntity(game.getPacmanId()).getCurrentCoordinate();
-
-    // Find a pellet by scanning the board
-    Coordinate target = null;
-
-    for (int x = 0; x < game.getXBoardDimension(); x++) {
-        for (int y = 0; y < game.getYBoardDimension(); y++) {
-
-            Coordinate c = new Coordinate(x, y);
-
-            if (!game.isInBounds(c)) {
-                continue;
-            }
-
-            if (game.getTile(c).getState()
-                    == edu.bu.pas.pacman.game.Tile.State.PELLET) {
-
-                target = c;
-                break;
-            }
-        }
+        // CASE 1: Specific target set (Unit Tests, specific movement)
         if (target != null) {
-            break;
+            Path<Coordinate> path = this.getBoardRouter().graphSearch(src, target, game);
+            if (path != null) {
+                Stack<Coordinate> plan = pathToStack(path);
+                this.setPlanToGetToTarget(plan);
+            } else {
+                this.setPlanToGetToTarget(new Stack<>());
+            }
+            return;
+        }
+
+        // CASE 2: No target set (Play Game: Eat all pellets efficiently)
+        // Use PelletRouter to find the best order to eat pellets
+        Path<PelletVertex> tour = this.getPelletRouter().graphSearch(game);
+        
+        if (tour != null) {
+            // Unroll the high-level tour (Goal -> Start)
+            List<PelletVertex> tourStates = new ArrayList<>();
+            Path<PelletVertex> p = tour;
+            while (p != null) {
+                tourStates.add(p.getDestination());
+                p = p.getParentPath();
+            }
+            Collections.reverse(tourStates); // Now Start -> Goal
+
+            Stack<Coordinate> fullPlan = new Stack<>();
+            
+            // Build movement plan backwards (Last pellet -> ... -> First pellet)
+            for (int i = tourStates.size() - 1; i > 0; i--) {
+                Coordinate from = tourStates.get(i - 1).getPacmanCoordinate();
+                Coordinate to = tourStates.get(i).getPacmanCoordinate();
+                
+                // Route between pellets
+                Path<Coordinate> leg = this.getBoardRouter().graphSearch(from, to, game);
+                if (leg != null) {
+                    List<Coordinate> legCoords = new ArrayList<>();
+                    Path<Coordinate> legP = leg;
+                    // Add coords, excluding the 'from' node to avoid duplicates
+                    while (legP != null && legP.getParentPath() != null) {
+                        legCoords.add(legP.getDestination());
+                        legP = legP.getParentPath();
+                    }
+                    // LegCoords is (Dest -> ... -> NextStep). 
+                    // Stack needs NextStep at top.
+                    for (Coordinate c : legCoords) {
+                        fullPlan.push(c);
+                    }
+                }
+            }
+            this.setPlanToGetToTarget(fullPlan);
         }
     }
 
-    if (target == null) {
-        this.setPlanToGetToTarget(new Stack<>());
-        return;
-    }
-
-    this.setTargetCoordinate(target);
-
-    Path<Coordinate> path =
-        this.getBoardRouter().graphSearch(src, target, game);
-
-    Stack<Coordinate> plan = new Stack<>();
-
-    while (path != null) {
-        plan.push(path.getDestination());
-        path = path.getParentPath();
-    }
-
-    // Remove current position (top will be src)
-    if (!plan.isEmpty()) {
-        plan.pop();
-    }
-
-    this.setPlanToGetToTarget(plan);
-    */
-    }
-
-    @Override
-    public Action makeMove(final GameView game)
-    {
-        // This is currently configured to choose a random action
-        // TODO: change me!
-        {
-    Stack<Coordinate> plan =
-        this.getPlanToGetToTarget();
-
-    if (plan == null || plan.isEmpty()) {
-        this.makePlan(game);
-        plan = this.getPlanToGetToTarget();
-    }
-
-    if (plan == null || plan.isEmpty()) {
-        return Action.UP;
-    }
-
-    Coordinate current =
-        game.getEntity(game.getPacmanId())
-            .getCurrentCoordinate();
-
-    Coordinate next = plan.pop();
-
-    try {
-        return Action.inferFromCoordinates(current, next);
-    } catch (Exception e) {
-        return Action.UP;
+    // Helper to convert Path<Coordinate> to Stack<Coordinate>
+    private Stack<Coordinate> pathToStack(Path<Coordinate> path) {
+        List<Coordinate> coords = new ArrayList<>();
+        Path<Coordinate> p = path;
+        while (p != null && p.getParentPath() != null) { // Exclude source
+            coords.add(p.getDestination());
+            p = p.getParentPath();
         }
-   }
-        //return Action.values()[this.getRandom().nextInt(Action.values().length)];
+        // Coords: Dest -> ... -> FirstStep
+        // Stack should pop FirstStep first.
+        Stack<Coordinate> plan = new Stack<>();
+        for (Coordinate c : coords) {
+            plan.push(c);
+        }
+        return plan;
     }
 
     @Override
-    public void afterGameEnds(final GameView game)
-    {
-        // if you want to log stuff after a game ends implement me!
+    public Action makeMove(final GameView game) {
+        Stack<Coordinate> plan = this.getPlanToGetToTarget();
+
+        if (plan == null || plan.isEmpty()) {
+            this.makePlan(game);
+            plan = this.getPlanToGetToTarget();
+        }
+
+        if (plan == null || plan.isEmpty()) {
+            return Action.UP;
+        }
+
+        Coordinate current = game.getEntity(game.getPacmanId()).getCurrentCoordinate();
+        Coordinate next = plan.peek(); // Peek first
+
+        // Check if we are already there (edge case)
+        if (current.equals(next)) {
+            plan.pop();
+            if (plan.isEmpty()) return Action.UP;
+            next = plan.peek();
+        }
+
+        next = plan.pop();
+
+        try {
+            return Action.inferFromCoordinates(current, next);
+        } catch (Exception e) {
+            return Action.UP;
+        }
     }
+
+    @Override
+    public void afterGameEnds(final GameView game) {}
 }
+

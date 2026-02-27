@@ -2,6 +2,7 @@ package src.pas.pacman.routing;
 
 
 import java.net.CookiePolicy;
+import java.nio.file.OpenOption;
 import java.util.ArrayList;
 // SYSTEM IMPORTS
 import java.util.Collection;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.PriorityQueue;
+import java.util.HashMap;
 
 
 // JAVA PROJECT IMPORTS
@@ -16,6 +18,7 @@ import edu.bu.pas.pacman.game.Action;
 import edu.bu.pas.pacman.game.Game.GameView;
 import edu.bu.pas.pacman.game.Tile;
 import edu.bu.pas.pacman.graph.Path;
+import edu.bu.pas.pacman.graph.PelletGraph;
 import edu.bu.pas.pacman.graph.PelletGraph.PelletVertex;
 import edu.bu.pas.pacman.routing.PelletRouter;
 import edu.bu.pas.pacman.routing.PelletRouter.ExtraParams;
@@ -119,7 +122,44 @@ public class ThriftyPelletRouter
     @Override
     public Path<PelletVertex> graphSearch(final GameView game) 
     {
-        // TODO: implement me!
+        PelletVertex st = new PelletVertex(game);
+        //smallest to greatest
+        PriorityQueue<Pair<Float, Path<PelletVertex>>> openSet = new PriorityQueue<>((a, b) -> Float.compare(a.getFirst(), b.getFirst()));
+        HashMap<PelletVertex, Float> gScore = new HashMap<>();
+        float g = 0;
+        float h = getHeuristic(st, game, null);
+        float f = g + h;
+        Path<PelletVertex> startPath = new Path<PelletGraph.PelletVertex>(st);
+        openSet.add(new Pair<Float, Path<PelletVertex>>(f, startPath));
+        gScore.put(st,0f);
+
+        while (!openSet.isEmpty()) {
+            Pair<Float, Path<PelletVertex>> currentPair = openSet.poll();
+            PelletGraph.PelletVertex current = currentPair.getSecond().getDestination();
+
+            if (current.getRemainingPelletCoordinates().size() == 0) {
+                return currentPair.getSecond(); 
+            }
+
+            for (PelletVertex neighbor : getOutgoingNeighbors(current, game, null)) {
+                float newG = gScore.get(current) + getEdgeWeight(current, neighbor, null);
+
+                float value;
+                if (gScore.get(neighbor) == null) {
+                    value = Float.MAX_VALUE;
+                } else {
+                    value = gScore.get(neighbor);
+                }
+
+                if (newG < value) {
+                    gScore.put(neighbor, newG);
+                    float newH = getHeuristic(neighbor, game, null);
+                    float newF = newG + newH;
+                    Path<PelletVertex> newPath = new Path<PelletVertex>(neighbor, getEdgeWeight(current, neighbor, null), currentPair.getSecond());
+                    openSet.add(new Pair<Float, Path<PelletVertex>>(newF, newPath));
+                }
+            }
+        }
         return null;
     }
 

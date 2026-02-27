@@ -1,13 +1,15 @@
 package src.pas.pacman.routing;
 
 
+import java.net.CookiePolicy;
 import java.util.ArrayList;
 // SYSTEM IMPORTS
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
-import java.util.HashMap;
+import java.util.PriorityQueue;
+
 
 // JAVA PROJECT IMPORTS
 import edu.bu.pas.pacman.game.Action;
@@ -78,20 +80,40 @@ public class ThriftyPelletRouter
         Coordinate pacman = src.getPacmanCoordinate();
 
         Set<Coordinate> allNodes = new HashSet<>(pellets);
+        //pacman node is not in allNodes^^^
+
+        Set<Coordinate> visited = new HashSet<>();
+        
+        PriorityQueue<Pair<Float, Coordinate>> pQueue = new PriorityQueue<>();
+
+        visited.add(pacman);
+        for (Coordinate node:allNodes) {
+            float weight = Math.abs(pacman.x() - node.x()) + Math.abs(pacman.y() - node.y());
+            pQueue.add(new Pair<>(weight, node));
+        }
+
+        float totalWeight = 0;
         allNodes.add(pacman);
 
-        HashMap<Coordinate, Coordinate> tree = new HashMap<>();
+        //begin prim's greedy apporach to get minimum manhattan distances from pacman
+        while (!pQueue.isEmpty() && visited.size() < allNodes.size()) {
+            Pair<Float, Coordinate> current = pQueue.poll();
 
-        for (Coordinate coord1 : allNodes) {
-            for (Coordinate coord2 : allNodes) {
-                if (!coord1.equals(coord2)) {
-                    tree.put(coord1, coord2);
+            if (visited.contains(current.getSecond())) {
+                continue;
+            }
+
+            visited.add(current.getSecond());
+            totalWeight += current.getFirst();
+
+            for (Coordinate coord:allNodes) {
+                if (!visited.contains(coord)) {
+                    float distance = Math.abs(current.getSecond().x() - coord.x()) + Math.abs(current.getSecond().y() - coord.y());
+                    pQueue.add(new Pair<>(distance, coord));
                 }
             }
         }
-        
-
-        return 0f;
+        return totalWeight;
     }
 
     @Override
